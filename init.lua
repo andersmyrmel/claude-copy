@@ -12,6 +12,13 @@
 
 local cleaningClipboard = false
 
+local function isClaudeCodeWindow()
+  local win = hs.window.focusedWindow()
+  if not win then return false end
+  local title = win:title() or ""
+  return title:find("[Cc]laude") ~= nil
+end
+
 local function looksLikeClaudeTUI(text)
   local hasBoxChars = text:find("\xe2\x94\x82") ~= nil
   local hasPaddingRuns = text:find("  %s+%S") ~= nil
@@ -34,7 +41,7 @@ local function splitPaddedLine(text)
   local segments = {}
   local pos = 1
   while pos <= #text do
-    local s, e = text:find("   +", pos)
+    local s, e = text:find("        +", pos)  -- 8+ spaces
     if s then
       local seg = text:sub(pos, s - 1)
       if #seg > 0 then table.insert(segments, seg) end
@@ -111,6 +118,7 @@ end
 clipboardWatcher = hs.pasteboard.watcher.new(function(content)
   if cleaningClipboard then return end
   if type(content) ~= "string" then return end
+  if not isClaudeCodeWindow() then return end
   if not looksLikeClaudeTUI(content) then return end
 
   local cleaned = cleanClaudeTUI(content)
