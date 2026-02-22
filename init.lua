@@ -33,13 +33,13 @@ local function looksLikeClaudeTUI(text)
     table.insert(lines, line)
   end
   if #lines < 2 then return false end
-  local indentedCount = 0
+  -- At least one non-empty line must start with the 2-space TUI margin
   for _, line in ipairs(lines) do
-    if line:match("^  %S") or line == "" then
-      indentedCount = indentedCount + 1
+    if line:match("^  ") and line:match("%S") then
+      return true
     end
   end
-  return indentedCount / #lines > 0.6
+  return false
 end
 
 local function cleanClaudeTUI(text)
@@ -50,7 +50,9 @@ local function cleanClaudeTUI(text)
     line = line:gsub("%s+$", "")           -- trim trailing whitespace
 
     -- Check if line has more than the 2-space TUI margin (i.e. content is indented)
-    local hasExtraIndent = line:match("^  %s") ~= nil and line:match("%S") ~= nil
+    -- 6+ total spaces = 2 margin + 4+ content indent (code block)
+    -- 3-4 total spaces = 2 margin + soft-wrap continuation (rejoin these)
+    local hasExtraIndent = line:match("^      ") ~= nil and line:match("%S") ~= nil
 
     -- Strip the 2-space TUI margin
     line = line:gsub("^  ", "")
