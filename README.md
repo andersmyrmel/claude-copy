@@ -49,7 +49,7 @@ It preserves structure that matters: paragraph breaks, bullet lists, numbered li
 Requires macOS and [Homebrew](https://brew.sh/).
 
 ```bash
-git clone https://github.com/yourusername/claude-copy.git
+git clone https://github.com/andersmyrmel/claude-copy.git
 cd claude-copy
 ./install.sh
 ```
