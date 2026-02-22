@@ -39,10 +39,9 @@ I showed this to my uncle who fishes every weekend. His jaw dropped. A pen-sized
 | Leading 2-space margin | `··I showed this` | `I showed this` |
 | Box-drawing pipes | `│ some text` | `some text` |
 | Trailing whitespace | `some text·······` | `some text` |
-| Padding runs between visual lines | `end of line·······next line` | Splits into separate lines |
 | Soft-wrapped line breaks | Line broken at terminal width | Rejoined into paragraph |
 
-It preserves structure that matters: paragraph breaks, bullet lists, numbered lists, headings, `Key: value` pairs, code blocks, and hashtag lines.
+It preserves structure that matters: paragraph breaks, bullet lists, numbered lists, headings, `Key: value` pairs, indented code blocks, and hashtag lines.
 
 ## Install
 
@@ -64,12 +63,12 @@ Then open Hammerspoon, grant it Accessibility permissions when prompted, and rel
 
 ## How it works
 
-Three-phase pipeline that runs on every clipboard change:
+Pipeline that runs on every clipboard change:
 
-1. **App check** - only runs when the focused app is a terminal emulator (Ghostty, iTerm2, Terminal, Alacritty, kitty, WezTerm, Hyper). Copies from other apps are never touched.
-2. **Detect** - checks if the text looks like Claude Code output (box-drawing chars, consistent 2-space indent, padding runs). Extra safety net on top of the window check.
-3. **Strip** - removes `│` pipes, leading 2-space margin, trailing whitespace. Splits lines joined by large padding runs (8+ spaces) back into separate lines.
-4. **Rejoin** - recombines lines that were soft-wrapped at the terminal width back into paragraphs. Stops at structural boundaries (blank lines, list items, headings, etc).
+1. **App check** -only runs when the focused app is a terminal emulator (Ghostty, iTerm2, Terminal, Alacritty, kitty, WezTerm, Hyper). Copies from other apps are never touched.
+2. **Detect** -checks if 60%+ of lines start with a 2-space indent (Claude Code's TUI margin). Skips text that doesn't match.
+3. **Strip** -removes `│` pipes, the 2-space margin, and trailing whitespace. Tracks which lines had extra indentation beyond the margin (code blocks, nested content).
+4. **Rejoin** -recombines lines that were soft-wrapped at the terminal width back into paragraphs. Never rejoins indented lines or structural elements (blank lines, list items, headings, etc).
 
 A boolean flag prevents the watcher from re-triggering when it writes the cleaned text back to the clipboard.
 

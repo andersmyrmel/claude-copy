@@ -1,12 +1,11 @@
 -- claude-copy: Auto-clean Claude Code clipboard artifacts
--- https://github.com/anthropics/claude-copy
+-- https://github.com/andersmyrmel/claude-copy
 --
--- The Claude Code TUI adds rendering artifacts when you copy text:
---   - Leading 2-space margin
---   - Box-drawing vertical pipes (│)
+-- Ghostty (and most terminals) copy Claude Code TUI text as:
+--   - 2-space left margin on every line
+--   - Newlines at terminal width (soft wraps)
 --   - Trailing whitespace padding
---   - Multi-space padding runs between visual lines
---   - Hard line breaks from terminal width wrapping
+--   - Occasionally │ box-drawing pipes
 --
 -- This Hammerspoon script watches your clipboard and fixes all of that.
 
@@ -29,92 +28,68 @@ local function isTerminalFocused()
 end
 
 local function looksLikeClaudeTUI(text)
-  local hasBoxChars = text:find("\xe2\x94\x82") ~= nil
-  local hasPaddingRuns = text:find("  %s+%S") ~= nil
   local lines = {}
   for line in text:gmatch("[^\n]*") do
     table.insert(lines, line)
   end
-  if #lines < 1 then return false end
+  if #lines < 2 then return false end
   local indentedCount = 0
   for _, line in ipairs(lines) do
-    if line:match("^  ") then
+    if line:match("^  %S") or line == "" then
       indentedCount = indentedCount + 1
     end
   end
-  local indentRatio = indentedCount / #lines
-  return hasBoxChars or indentRatio > 0.7 or (hasPaddingRuns and indentRatio > 0.3)
-end
-
-local function splitPaddedLine(text)
-  local segments = {}
-  local pos = 1
-  while pos <= #text do
-    local s, e = text:find("        +", pos)  -- 8+ spaces
-    if s then
-      local seg = text:sub(pos, s - 1)
-      if #seg > 0 then table.insert(segments, seg) end
-      pos = e + 1
-    else
-      local seg = text:sub(pos)
-      if #seg > 0 then table.insert(segments, seg) end
-      break
-    end
-  end
-  return segments
+  return indentedCount / #lines > 0.6
 end
 
 local function cleanClaudeTUI(text)
-  -- Strip TUI chrome
-  local rawLines = {}
-  for line in text:gmatch("[^\n]*") do
-    line = line:gsub("\xe2\x94\x82", "")
-    line = line:gsub("^  ", "")
-    line = line:gsub("%s+$", "")
-    table.insert(rawLines, line)
-  end
-
-  -- Split padding runs (terminal joins visual rows with big space runs)
+  -- Parse lines, tracking which had extra indentation beyond the 2-space margin
   local lines = {}
-  for _, raw in ipairs(rawLines) do
-    if raw == "" then
-      table.insert(lines, "")
-    else
-      local segments = splitPaddedLine(raw)
-      for _, seg in ipairs(segments) do
-        seg = seg:match("^%s*(.-)%s*$")
-        if #seg > 0 then
-          table.insert(lines, seg)
-        end
-      end
-    end
+  for line in text:gmatch("[^\n]*") do
+    line = line:gsub("\xe2\x94\x82", "")  -- strip │ if present
+    line = line:gsub("%s+$", "")           -- trim trailing whitespace
+
+    -- Check if line has more than the 2-space TUI margin (i.e. content is indented)
+    local hasExtraIndent = line:match("^  %s") ~= nil and line:match("%S") ~= nil
+
+    -- Strip the 2-space TUI margin
+    line = line:gsub("^  ", "")
+
+    table.insert(lines, { text = line, indented = hasExtraIndent })
   end
 
-  -- Rejoin soft-wrapped lines into paragraphs
+  -- Rejoin lines into paragraphs.
+  -- Don't rejoin if:
+  --   - next line is empty (paragraph break)
+  --   - next line was indented beyond the margin (code block, nested content)
+  --   - current line was indented beyond the margin
+  --   - next line is a structural element (list, heading, key:value, etc)
   local result = {}
   local i = 1
   while i <= #lines do
-    local line = lines[i]
-    if line == "" then
+    local cur = lines[i]
+    if cur.text == "" then
       table.insert(result, "")
+    elseif cur.indented then
+      -- Indented line: keep as-is, don't rejoin
+      table.insert(result, cur.text)
     else
-      local para = line
+      local para = cur.text
       while i + 1 <= #lines do
         local nxt = lines[i + 1]
-        if nxt == "" then break end
-        if nxt:match("^[%-%*%+] ")
-          or nxt:match("^%d+%.%s")
-          or nxt:match("^#+%s")
-          or nxt:match("^%*%*")
-          or nxt:match("^%-%-%-")
-          or nxt:match("^___")
-          or nxt:match("^    ")
-          or nxt:match("^\t")
-          or nxt:match("^%u[%w_]-:%s")
-          or nxt:match("^#%w")
+        if nxt.text == "" then break end
+        if nxt.indented then break end
+        if nxt.text:match("^[%-%*%+] ")
+          or nxt.text:match("^%d+%.%s")
+          or nxt.text:match("^#+%s")
+          or nxt.text:match("^%*%*")
+          or nxt.text:match("^%-%-%-")
+          or nxt.text:match("^___")
+          or nxt.text:match("^%u[%w_]-:%s")
+          or nxt.text:match("^#%w")
           then break end
         i = i + 1
-        para = para .. " " .. nxt
+        para = para .. " " .. nxt.text
       end
       table.insert(result, para)
     end
