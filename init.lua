@@ -12,11 +12,20 @@
 
 local cleaningClipboard = false
 
-local function isClaudeCodeWindow()
-  local win = hs.window.focusedWindow()
-  if not win then return false end
-  local title = win:title() or ""
-  return title:find("[Cc]laude") ~= nil
+local terminalApps = {
+  ["Ghostty"] = true,
+  ["iTerm2"] = true,
+  ["Terminal"] = true,
+  ["Alacritty"] = true,
+  ["kitty"] = true,
+  ["WezTerm"] = true,
+  ["Hyper"] = true,
+}
+
+local function isTerminalFocused()
+  local app = hs.application.frontmostApplication()
+  if not app then return false end
+  return terminalApps[app:name()] == true
 end
 
 local function looksLikeClaudeTUI(text)
@@ -118,7 +127,7 @@ end
 clipboardWatcher = hs.pasteboard.watcher.new(function(content)
   if cleaningClipboard then return end
   if type(content) ~= "string" then return end
-  if not isClaudeCodeWindow() then return end
+  if not isTerminalFocused() then return end
   if not looksLikeClaudeTUI(content) then return end
 
   local cleaned = cleanClaudeTUI(content)

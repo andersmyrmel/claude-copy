@@ -66,7 +66,7 @@ Then open Hammerspoon, grant it Accessibility permissions when prompted, and rel
 
 Three-phase pipeline that runs on every clipboard change:
 
-1. **Window check** - only runs when the focused window title contains "Claude". Copies from other apps are never touched.
+1. **App check** - only runs when the focused app is a terminal emulator (Ghostty, iTerm2, Terminal, Alacritty, kitty, WezTerm, Hyper). Copies from other apps are never touched.
 2. **Detect** - checks if the text looks like Claude Code output (box-drawing chars, consistent 2-space indent, padding runs). Extra safety net on top of the window check.
 3. **Strip** - removes `│` pipes, leading 2-space margin, trailing whitespace. Splits lines joined by large padding runs (8+ spaces) back into separate lines.
 4. **Rejoin** - recombines lines that were soft-wrapped at the terminal width back into paragraphs. Stops at structural boundaries (blank lines, list items, headings, etc).
@@ -76,7 +76,7 @@ A boolean flag prevents the watcher from re-triggering when it writes the cleane
 ## Limitations
 
 - macOS only (Hammerspoon requirement)
-- Tested with Ghostty, iTerm2, and Terminal.app. Should work with any terminal that sets the window title from the TUI.
+- Tested with Ghostty. Supports Ghostty, iTerm2, Terminal.app, Alacritty, kitty, WezTerm, and Hyper.
 
 ## Credits
 
