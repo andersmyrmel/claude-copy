@@ -74,8 +74,9 @@ A boolean flag prevents the watcher from re-triggering when it writes the cleane
 
 ## Limitations
 
-- macOS only (Hammerspoon requirement)
-- Tested with Ghostty. Supports Ghostty, iTerm2, Terminal.app, Alacritty, kitty, WezTerm, and Hyper.
+- macOS only (Hammerspoon requirement).
+- Fenced code blocks (triple backtick) get flattened by the terminal's clipboard before our script runs. The terminal copies them as a single line with space padding. Indented code blocks (4+ spaces) are preserved correctly.
+- Tested with Ghostty. Should work with iTerm2, Terminal.app, Alacritty, kitty, WezTerm, and Hyper.
 
 ## Credits
 

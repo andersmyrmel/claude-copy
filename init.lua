@@ -67,14 +67,17 @@ local function cleanClaudeTUI(text)
   --   - current line was indented beyond the margin
   --   - next line is a structural element (list, heading, key:value, etc)
   local result = {}
+  local inCodeBlock = false
   local i = 1
   while i <= #lines do
     local cur = lines[i]
     if cur.text == "" then
       table.insert(result, "")
-    elseif cur.indented then
-      -- Indented line: keep as-is, don't rejoin
+      inCodeBlock = false
+    elseif cur.indented or inCodeBlock then
+      -- Inside a code block: keep line as-is
       table.insert(result, cur.text)
+      if cur.indented then inCodeBlock = true end
     else
       local para = cur.text
       while i + 1 <= #lines do
