@@ -65,10 +65,10 @@ Then open Hammerspoon, grant it Accessibility permissions when prompted, and rel
 
 Pipeline that runs on every clipboard change:
 
-1. **App check** -only runs when the focused app is a terminal emulator (Ghostty, iTerm2, Terminal, Alacritty, kitty, WezTerm, Hyper). Copies from other apps are never touched.
+1. **App check** - only runs when the focused app is a terminal emulator (Ghostty, iTerm2, Terminal, Alacritty, kitty, WezTerm, Hyper). Copies from other apps are never touched.
 2. **Detect** - checks if at least one line starts with a 2-space indent (Claude Code's TUI margin). Skips text that doesn't match.
-3. **Strip** -removes `│` pipes, the 2-space margin, and trailing whitespace. Tracks which lines had extra indentation beyond the margin (code blocks, nested content).
-4. **Rejoin** -recombines lines that were soft-wrapped at the terminal width back into paragraphs. Never rejoins indented lines or structural elements (blank lines, list items, headings, etc).
+3. **Strip** - removes `│` pipes, the 2-space margin, and trailing whitespace. Tracks which lines had extra indentation beyond the margin (code blocks, nested content).
+4. **Rejoin** - recombines lines that were soft-wrapped at the terminal width back into paragraphs. Never rejoins indented lines or structural elements (blank lines, list items, headings, etc).
 
 A boolean flag prevents the watcher from re-triggering when it writes the cleaned text back to the clipboard.
 
