@@ -4,7 +4,7 @@ Copy text from Claude Code's terminal UI and paste it clean.
 
 When you select and copy text from Claude Code, your clipboard gets filled with rendering junk: extra margins, box-drawing characters, trailing spaces, and hard line breaks from terminal wrapping. You paste it somewhere and it looks wrong.
 
-claude-copy fixes your clipboard automatically. It runs as a [Hammerspoon](https://www.hammerspoon.org/) watcher on macOS, detects when copied text has TUI artifacts, and cleans it before you paste.
+claude-copy fixes your clipboard automatically. It runs as a [Hammerspoon](https://www.hammerspoon.org/) key interceptor on macOS, catches `Cmd+C` in terminal apps, and cleans Claude TUI artifacts before you paste.
 
 ## The problem
 
@@ -41,7 +41,7 @@ I showed this to my uncle who fishes every weekend. His jaw dropped. A pen-sized
 | Trailing whitespace | `some text·······` | `some text` |
 | Soft-wrapped line breaks | Line broken at terminal width | Rejoined into paragraph |
 
-It preserves structure that matters: paragraph breaks, bullet lists, numbered lists, headings, `Key: value` pairs, indented code blocks, and hashtag lines.
+It preserves structure that matters: paragraph breaks, bullet lists, numbered lists, headings, `Key: value` pairs, indented or code-like blocks, and hashtag lines.
 
 ## Install
 
@@ -63,18 +63,18 @@ Then open Hammerspoon, grant it Accessibility permissions when prompted, and rel
 
 ## How it works
 
-Pipeline that runs on every clipboard change:
+Pipeline that runs when you press `Cmd+C`:
 
-1. **App check** - only runs when the focused app is a terminal emulator (Ghostty, iTerm2, Terminal, Alacritty, kitty, WezTerm, Hyper). Copies from other apps are never touched.
-2. **Detect** - checks if at least one line starts with a 2-space indent (Claude Code's TUI margin). Skips text that doesn't match.
-3. **Strip** - removes `│` pipes, the 2-space margin, and trailing whitespace. Tracks which lines had extra indentation beyond the margin (code blocks, nested content).
-4. **Rejoin** - recombines lines that were soft-wrapped at the terminal width back into paragraphs. Never rejoins indented lines or structural elements (blank lines, list items, headings, etc).
-
-A boolean flag prevents the watcher from re-triggering when it writes the cleaned text back to the clipboard.
+1. **Intercept** - catches plain `Cmd+C` only when the focused app is a terminal emulator (Ghostty, iTerm2, Terminal, Alacritty, kitty, WezTerm, Hyper). Copies from other apps are never touched.
+2. **Copy** - sends a real `Cmd+C`, waits for clipboard update, then reads the copied text.
+3. **Detect (conservative)** - scores Claude-likeness from multiple signals (2-space margin coverage, `│` markers, diff-like patterns, wrapped-line shape, prompt negatives).
+4. **Tiered clean** - high confidence gets strip + rejoin, medium confidence gets strip-only (no reflow), low confidence is left untouched.
 
 ## Limitations
 
 - macOS only (Hammerspoon requirement).
+- Only plain keyboard `Cmd+C` in terminal apps is intercepted. Menu copy or mouse/context-menu copy is not intercepted.
+- Detection is confidence-based and intentionally conservative. Ambiguous text may be strip-only or left untouched.
 - Fenced code blocks (triple backtick) get flattened by the terminal's clipboard before our script runs. The terminal copies them as a single line with space padding. Indented code blocks (4+ spaces) are preserved correctly.
 - Tested with Ghostty. Should work with iTerm2, Terminal.app, Alacritty, kitty, WezTerm, and Hyper.
 
