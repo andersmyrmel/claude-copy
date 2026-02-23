@@ -14,7 +14,7 @@ local terminalApps = {
   ["Hyper"] = true,
 }
 
-local VERSION = "2026-02-23.7"
+local VERSION = "2026-02-23.8"
 
 local config = {
   copyTimeoutMs = 350,
@@ -402,14 +402,21 @@ local function classifyClaudeClipboard(text)
   local diffLike = 0
   local codeLike = 0
   local numberedLines = 0
+  local markdownStructural = 0
   local wrappedPairs = 0
   local previousWrapCandidate = nil
+  local firstLineNoMargin = false
+  local seenFirstNonEmpty = false
 
   for _, rawLine in ipairs(lines) do
     local parsed = parseClaudeLine(rawLine)
 
     if parsed.nonEmpty then
       nonEmpty = nonEmpty + 1
+      if not seenFirstNonEmpty then
+        seenFirstNonEmpty = true
+        firstLineNoMargin = not parsed.hasMargin
+      end
       if parsed.hasMargin then marginLines = marginLines + 1 end
       if parsed.hadPipe then pipeLines = pipeLines + 1 end
       if looksPromptLike(parsed.text) then promptLike = promptLike + 1 end
@@ -417,6 +424,10 @@ local function classifyClaudeClipboard(text)
       if parsed.codeLike then codeLike = codeLike + 1 end
       local hasLineNumberPrefix = isLineNumberPrefixed(parsed.text)
       if hasLineNumberPrefix then numberedLines = numberedLines + 1 end
+      local t = parsed.text
+      if t:match("^%d+%.%s") or t:match("^[%-%*%+] ") or t:match("^#+%s") then
+        markdownStructural = markdownStructural + 1
+      end
 
       local isWrapCandidate = not parsed.codeLike
         and not isStructuralLine(parsed.text)
@@ -446,7 +457,11 @@ local function classifyClaudeClipboard(text)
     return { mode = "none", score = 0 }
   end
 
-  local marginCoverage = marginLines / nonEmpty
+  -- Partial copy: first line has no margin (selection started mid-line),
+  -- but remaining lines do. Exclude the first line from coverage calc.
+  local partialCopy = firstLineNoMargin and nonEmpty >= 2 and marginLines == (nonEmpty - 1)
+  local coverageDenom = partialCopy and (nonEmpty - 1) or nonEmpty
+  local marginCoverage = marginLines / coverageDenom
   if marginCoverage < config.minMarginCoverage then
     return { mode = "none", score = 0 }
   end
@@ -492,6 +507,16 @@ local function classifyClaudeClipboard(text)
     score = score + 2
   end
 
+  if markdownStructural >= 3 then
+    score = score + 2
+  elseif markdownStructural >= 2 then
+    score = score + 1
+  end
+
+  if partialCopy then
+    score = score + 1
+  end
+
   if marginCoverage < 0.75 then
     score = score - 1
   end
@@ -524,6 +549,7 @@ local function classifyClaudeClipboard(text)
     pipeLines = pipeLines,
     diffLike = diffLike,
     numberedLines = numberedLines,
+    markdownStructural = markdownStructural,
     wrappedPairs = wrappedPairs,
   }
 end
@@ -541,7 +567,7 @@ local function cleanClaudeTUI(text)
 
     if not cur.nonEmpty then
       result[#result + 1] = ""
-    elseif cur.indented or cur.codeLike or isStructuralLine(cur.text) then
+    elseif cur.indented or cur.codeLike then
       result[#result + 1] = cur.text
     else
       local para = cur.text
