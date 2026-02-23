@@ -94,7 +94,7 @@ local function cleanClaudeTUI(text)
           or nxt.text:match("^#%w")
           then break end
         i = i + 1
-        para = para .. " " .. nxt.text
+        para = para .. " " .. nxt.text:match("^%s*(.-)$")
       end
       table.insert(result, para)
     end
