@@ -1,8 +1,14 @@
 -- claude-copy: Auto-clean Claude Code clipboard artifacts
 -- https://github.com/andersmyrmel/claude-copy
 --
--- Default mode intercepts Cmd+C in terminal apps, performs the real copy,
+-- Intercepts Cmd+C in terminal apps, performs the real copy,
 -- then conditionally cleans Claude TUI artifacts in the copied text.
+
+local VERSION = "2026-02-24.2"
+
+-- ═══════════════════════════════════════════════════════════════
+-- Configuration
+-- ═══════════════════════════════════════════════════════════════
 
 local terminalApps = {
   ["Ghostty"] = true,
@@ -12,9 +18,11 @@ local terminalApps = {
   ["kitty"] = true,
   ["WezTerm"] = true,
   ["Hyper"] = true,
+  ["Warp"] = true,
+  ["Rio"] = true,
+  ["Tabby"] = true,
+  ["Wave"] = true,
 }
-
-local VERSION = "2026-02-24.1"
 
 local config = {
   copyTimeoutMs = 350,
@@ -31,35 +39,73 @@ local config = {
   wrapMinInferredWidth = 40,
 }
 
-local lineNumberCodeKeywords = {
-  "import",
-  "export",
-  "const",
-  "let",
-  "var",
-  "function",
-  "class",
-  "if",
-  "for",
-  "while",
-  "return",
+-- Full set of keywords that identify a line as code-like.
+-- Used by isCodeLikeLine() / startsWithCodeKeyword().
+local codeKeywords = {
   "async",
   "await",
-  "try",
+  "case",
   "catch",
-  "interface",
-  "type",
-  "enum",
-  "struct",
-  "local",
+  "class",
+  "const",
   "def",
+  "else",
+  "elseif",
+  "enum",
+  "export",
+  "finally",
+  "for",
+  "from",
+  "function",
+  "if",
+  "impl",
+  "import",
+  "interface",
+  "let",
+  "local",
+  "package",
+  "private",
+  "protected",
+  "public",
+  "return",
+  "struct",
+  "switch",
+  "try",
+  "type",
+  "var",
+  "while",
 }
 
-local function isTerminalFocused()
-  local app = hs.application.frontmostApplication()
-  if not app then return false end
-  return terminalApps[app:name()] == true
-end
+-- Subset of codeKeywords used to detect line-number prefixes.
+-- Kept tighter to avoid false positives (e.g. "42 else" is ambiguous,
+-- "42 const" almost certainly has a line number prefix).
+local lineNumberKeywords = {
+  "async",
+  "await",
+  "catch",
+  "class",
+  "const",
+  "def",
+  "enum",
+  "export",
+  "for",
+  "function",
+  "if",
+  "import",
+  "interface",
+  "let",
+  "local",
+  "return",
+  "struct",
+  "try",
+  "type",
+  "var",
+  "while",
+}
+
+-- ═══════════════════════════════════════════════════════════════
+-- Text Utilities
+-- ═══════════════════════════════════════════════════════════════
 
 local function splitLines(text)
   text = text:gsub("\r\n", "\n"):gsub("\r", "\n")
@@ -68,10 +114,116 @@ local function splitLines(text)
     lines[#lines + 1] = line
   end
   if #lines > 0 and lines[#lines] == "" then
-    lines[#lines] = nil
+    table.remove(lines)
   end
   return lines
 end
+
+-- ═══════════════════════════════════════════════════════════════
+-- Line Classification
+-- ═══════════════════════════════════════════════════════════════
+
+local function isLineNumberPrefixed(line)
+  if line:match("^%d+%s%s+%S") then return true end
+  local num, rest = line:match("^(%d+)%s+(.+)$")
+  if not num or not rest then return false end
+  local n = tonumber(num)
+  if not n or n < 1 or n > 999 then return false end
+
+  for _, keyword in ipairs(lineNumberKeywords) do
+    if rest:match("^" .. keyword .. "%f[%A]") then
+      return true
+    end
+  end
+  if rest:match("^//") or rest:match("^/%*") then return true end
+  if rest:match("^[%[{(]") then return true end
+  if rest:match("^[%a_][%w_]*%s*[%({=:.]") then return true end
+
+  return false
+end
+
+local function isStructuralLine(line)
+  return line:match("^[%-%*%+] ")
+    or line:match("^%d+%.%s")
+    or line:match("^%d+%s+[+%-]%s")
+    or isLineNumberPrefixed(line)
+    or line:match("^#+%s")
+    or line:match("^[$#] ")
+    or line:match("^%*%*")
+    or line:match("^%-%-%-")
+    or line:match("^___")
+    or line:match("^%u[%w_]-:%s")
+    or line:match("^#%w")
+end
+
+local function startsWithCodeKeyword(line)
+  for _, keyword in ipairs(codeKeywords) do
+    if line:match("^%s*" .. keyword .. "%f[%A]") then
+      return true
+    end
+  end
+  return false
+end
+
+local function isCodeLikeLine(line)
+  if not line:match("%S") then return false end
+  if line:match("^```") then return true end
+  if isLineNumberPrefixed(line) then return true end
+  if startsWithCodeKeyword(line) then return true end
+  if line:match("^%s*//") or line:match("^%s*/%*") then return true end
+  if line:match("^%s*[%{%}%[%]]%s*$") then return true end
+  if line:match("^%s*[%w_%.:%[%]\"'`%-]+%s*=%s*[^=]") then return true end
+  if line:match("[%{%};]") then return true end
+  if line:match("=>") or line:match("::") then return true end
+  if line:match("^%s*[%w_%.:]+%b()%s*$") then return true end
+  if line:match("^%s*[%w_%.:]+%b()%s*[%{%:]%s*$") then return true end
+  return false
+end
+
+local function isPromptLike(line)
+  return line:match("^[$#] ")
+    or line:match("^[%w_.-]+@[%w_.-]+[:~/%w%._%-]*[%$#] ")
+    or line:match("^%[[^%]]+%][%$#] ")
+end
+
+local function isDiffLikeLine(line)
+  return line:match("^@@")
+    or line:match("^diff%s+%-%-git")
+    or line:match("^index%s+[%w%.]+")
+    or line:match("^%-%-%-")
+    or line:match("^%+%+%+")
+    or line:match("^%d+%s+[+%-]%s")
+end
+
+local function parseClaudeLine(rawLine)
+  local line = rawLine:gsub("%s+$", "")
+  local hasMargin = line:match("^  ") ~= nil and line:match("%S") ~= nil
+  local hadPipe = line:match("^  │") ~= nil
+
+  if hasMargin then
+    line = line:gsub("^  ", "", 1)
+    line = line:gsub("^│ ?", "", 1)
+  end
+
+  local nonEmpty = line:match("%S") ~= nil
+
+  return {
+    text = line,
+    nonEmpty = nonEmpty,
+    hasMargin = hasMargin,
+    hadPipe = hadPipe,
+    indented = line:match("^    %S") ~= nil or line:match("^\t") ~= nil,
+    codeLike = isCodeLikeLine(line),
+  }
+end
+
+-- ═══════════════════════════════════════════════════════════════
+-- Flattened Line Recovery
+--
+-- When the terminal copies numbered code (e.g. diff or editor
+-- output), it can collapse multiple visual lines into a single
+-- clipboard line. These functions detect and re-split them.
+-- ═══════════════════════════════════════════════════════════════
 
 local function collectLineNumberStarts(flat)
   local startsByPos = {}
@@ -79,82 +231,71 @@ local function collectLineNumberStarts(flat)
 
   local function addIfLineStart(pos)
     if pos <= 1 then return end
-    local prevChar = flat:sub(pos - 1, pos - 1)
-    if prevChar:match("%s") then
+    if flat:sub(pos - 1, pos - 1):match("%s") then
       startsByPos[pos] = true
     end
   end
 
+  -- Diff-style: "42 + " or "42 - "
   for pos in flat:gmatch("()%d+%s+[+%-]%s") do
     addIfLineStart(pos)
     diffStarts = diffStarts + 1
   end
 
-  for _, keyword in ipairs(lineNumberCodeKeywords) do
-    local keywordPattern = "()(%d+)%s+" .. keyword .. "%f[%A]"
-    for pos, num in flat:gmatch(keywordPattern) do
-      local n = tonumber(num)
-      if n and n >= 1 and n <= 999 then
+  -- "42 keyword"
+  for _, keyword in ipairs(lineNumberKeywords) do
+    for pos, num in flat:gmatch("()(%d+)%s+" .. keyword .. "%f[%A]") do
+      if tonumber(num) >= 1 and tonumber(num) <= 999 then
         addIfLineStart(pos)
       end
     end
   end
 
+  -- "42 //" or "42 /*"
   for pos, num in flat:gmatch("()(%d+)%s+//") do
-    local n = tonumber(num)
-    if n and n >= 1 and n <= 999 then
-      addIfLineStart(pos)
-    end
+    if tonumber(num) >= 1 and tonumber(num) <= 999 then addIfLineStart(pos) end
   end
-
   for pos, num in flat:gmatch("()(%d+)%s+/%*") do
-    local n = tonumber(num)
-    if n and n >= 1 and n <= 999 then
-      addIfLineStart(pos)
-    end
+    if tonumber(num) >= 1 and tonumber(num) <= 999 then addIfLineStart(pos) end
   end
 
+  -- "42 [", "42 {", "42 ("
   for pos, num in flat:gmatch("()(%d+)%s+[%[{(]") do
-    local n = tonumber(num)
-    if n and n >= 1 and n <= 999 then
-      addIfLineStart(pos)
-    end
+    if tonumber(num) >= 1 and tonumber(num) <= 999 then addIfLineStart(pos) end
   end
 
-  for pos, num, ident, punct in flat:gmatch("()(%d+)%s+([%a_][%w_]*)([%({=:.])") do
-    local n = tonumber(num)
-    if n and n >= 1 and n <= 999 then
-      addIfLineStart(pos)
-    end
+  -- "42 identifier(" or "42 identifier="
+  for pos, num in flat:gmatch("()(%d+)%s+([%a_][%w_]*)([%({=:.])") do
+    if tonumber(num) >= 1 and tonumber(num) <= 999 then addIfLineStart(pos) end
   end
 
+  -- Chained line numbers: "42 43 + " (two numbers before diff marker)
   for pos, firstNum, sep in flat:gmatch("()(%d+)(%s+)%d+%s+[+%-]%s") do
     addIfLineStart(pos)
-    local secondPos = pos + #firstNum + #sep
-    addIfLineStart(secondPos)
+    addIfLineStart(pos + #firstNum + #sep)
   end
 
+  -- Chained: "42 43  X" (two numbers, second followed by double-space + content)
   for pos, firstNum, sep in flat:gmatch("()(%d+)(%s+)%d+%s%s+%S") do
     addIfLineStart(pos)
-    local secondPos = pos + #firstNum + #sep
-    addIfLineStart(secondPos)
+    addIfLineStart(pos + #firstNum + #sep)
   end
 
-  for _, keyword in ipairs(lineNumberCodeKeywords) do
-    local chainedKeywordPattern = "()(%d+)(%s+)%d+%s+" .. keyword .. "%f[%A]"
-    for pos, firstNum, sep in flat:gmatch(chainedKeywordPattern) do
+  -- Chained: "42 43 keyword"
+  for _, keyword in ipairs(lineNumberKeywords) do
+    for pos, firstNum, sep in flat:gmatch("()(%d+)(%s+)%d+%s+" .. keyword .. "%f[%A]") do
       addIfLineStart(pos)
-      local secondPos = pos + #firstNum + #sep
-      addIfLineStart(secondPos)
+      addIfLineStart(pos + #firstNum + #sep)
     end
   end
 
+  -- "42  X" (number, single space, double-space, content)
   for pos in flat:gmatch("()%d+%s%s+%S") do
     addIfLineStart(pos)
   end
 
   local starts = {}
-  for pos, _ in pairs(startsByPos) do
+  for pos in pairs(startsByPos) do
     starts[#starts + 1] = pos
   end
   table.sort(starts)
@@ -167,11 +308,8 @@ local function hasPlausibleNumberProgression(flat, starts)
   local numbers = {}
   for _, pos in ipairs(starts) do
     local num = tonumber(flat:match("^(%d+)", pos))
-    if num then
-      numbers[#numbers + 1] = num
-    end
+    if num then numbers[#numbers + 1] = num end
   end
-
   if #numbers < 3 then return false end
 
   local plausible = 0
@@ -182,16 +320,14 @@ local function hasPlausibleNumberProgression(flat, starts)
     end
   end
 
-  local minimumPlausible = math.max(2, math.floor((#numbers - 1) * 0.6))
-  return plausible >= minimumPlausible
+  return plausible >= math.max(2, math.floor((#numbers - 1) * 0.6))
 end
 
 local function recoverFlattenedNumberedLine(flat)
   local starts, diffStarts = collectLineNumberStarts(flat)
   if #starts < 3 then return flat end
 
-  local progressionLikely = hasPlausibleNumberProgression(flat, starts)
-  if diffStarts < 2 and not progressionLikely then
+  if diffStarts < 2 and not hasPlausibleNumberProgression(flat, starts) then
     return flat
   end
 
@@ -202,14 +338,11 @@ local function recoverFlattenedNumberedLine(flat)
 
   local out = {}
   for i = 1, #flat do
-    if splitAt[i] then
-      out[#out + 1] = "\n"
-    end
+    if splitAt[i] then out[#out + 1] = "\n" end
     out[#out + 1] = flat:sub(i, i)
   end
 
-  local rebuilt = table.concat(out)
-  rebuilt = rebuilt:gsub("^%s*\n", "")
+  local rebuilt = table.concat(out):gsub("^%s*\n", "")
 
   local normalized = {}
   for _, line in ipairs(splitLines(rebuilt)) do
@@ -244,9 +377,7 @@ local function recoverFlattenedNumberedBlock(text)
   local rebuiltLines = {}
   for _, line in ipairs(lines) do
     local recovered = recoverFlattenedNumberedLine(line)
-    if recovered ~= line then
-      changed = true
-    end
+    if recovered ~= line then changed = true end
     rebuiltLines[#rebuiltLines + 1] = recovered
   end
 
@@ -254,142 +385,14 @@ local function recoverFlattenedNumberedBlock(text)
   return table.concat(rebuiltLines, "\n")
 end
 
-local function isLineNumberPrefixed(line)
-  if line:match("^%d+%s%s+%S") then return true end
-  local num, rest = line:match("^(%d+)%s+(.+)$")
-  if not num or not rest then return false end
-  local n = tonumber(num)
-  if not n or n < 1 or n > 999 then return false end
-
-  for _, keyword in ipairs(lineNumberCodeKeywords) do
-    if rest:match("^" .. keyword .. "%f[%A]") then
-      return true
-    end
-  end
-  if rest:match("^//") or rest:match("^/%*") then
-    return true
-  end
-  if rest:match("^[%[{(]") then
-    return true
-  end
-  if rest:match("^[%a_][%w_]*%s*[%({=:.]") then
-    return true
-  end
-
-  return false
-end
-
-local function isStructuralLine(line)
-  return line:match("^[%-%*%+] ")
-    or line:match("^%d+%.%s")
-    or line:match("^%d+%s+[+%-]%s")
-    or isLineNumberPrefixed(line)
-    or line:match("^#+%s")
-    or line:match("^[$#] ")
-    or line:match("^%*%*")
-    or line:match("^%-%-%-")
-    or line:match("^___")
-    or line:match("^%u[%w_]-:%s")
-    or line:match("^#%w")
-end
-
-local codeKeywords = {
-  "local",
-  "function",
-  "const",
-  "let",
-  "var",
-  "def",
-  "class",
-  "if",
-  "elseif",
-  "else",
-  "for",
-  "while",
-  "switch",
-  "case",
-  "return",
-  "import",
-  "from",
-  "export",
-  "package",
-  "public",
-  "private",
-  "protected",
-  "async",
-  "await",
-  "try",
-  "catch",
-  "finally",
-  "interface",
-  "type",
-  "enum",
-  "struct",
-  "impl",
-}
-
-local function startsWithCodeKeyword(line)
-  for _, keyword in ipairs(codeKeywords) do
-    if line:match("^%s*" .. keyword .. "%f[%A]") then
-      return true
-    end
-  end
-  return false
-end
-
-local function isCodeLikeLine(line)
-  if not line:match("%S") then return false end
-  if line:match("^```") then return true end
-  if isLineNumberPrefixed(line) then return true end
-  if startsWithCodeKeyword(line) then return true end
-  if line:match("^%s*//") or line:match("^%s*/%*") then return true end
-  if line:match("^%s*[%{%}%[%]]%s*$") then return true end
-  if line:match("^%s*[%w_%.:%[%]\"'`%-]+%s*=%s*[^=]") then return true end
-  if line:match("[%{%};]") then return true end
-  if line:match("=>") or line:match("::") then return true end
-  if line:match("^%s*[%w_%.:]+%b()%s*$") then return true end
-  if line:match("^%s*[%w_%.:]+%b()%s*[%{%:]%s*$") then return true end
-  return false
-end
-
-local function looksPromptLike(line)
-  return line:match("^[$#] ")
-    or line:match("^[%w_.-]+@[%w_.-]+[:~/%w%._%-]*[%$#] ")
-    or line:match("^%[[^%]]+%][%$#] ")
-end
-
-local function isDiffLikeLine(line)
-  return line:match("^@@")
-    or line:match("^diff%s+%-%-git")
-    or line:match("^index%s+[%w%.]+")
-    or line:match("^%-%-%-")
-    or line:match("^%+%+%+")
-    or line:match("^%d+%s+[+%-]%s")
-end
-
-local function parseClaudeLine(rawLine)
-  local line = rawLine:gsub("%s+$", "")
-  local hasMargin = line:match("^  ") ~= nil and line:match("%S") ~= nil
-  local hadPipe = line:match("^  │") ~= nil
-
-  if hasMargin then
-    line = line:gsub("^  ", "", 1)
-    line = line:gsub("^│ ?", "", 1)
-  end
-
-  local nonEmpty = line:match("%S") ~= nil
-  local indented = line:match("^    %S") ~= nil or line:match("^\t") ~= nil
-  local codeLike = isCodeLikeLine(line)
-
-  return {
-    text = line,
-    nonEmpty = nonEmpty,
-    hasMargin = hasMargin,
-    hadPipe = hadPipe,
-    indented = indented,
-    codeLike = codeLike,
-  }
-end
+-- ═══════════════════════════════════════════════════════════════
+-- Clipboard Classification
+--
+-- Scores clipboard content on multiple signals to decide:
+--   "full"  → strip margins + rejoin wrapped paragraphs
+--   "strip" → strip margins only (no reflow)
+--   "none"  → leave untouched
+-- ═══════════════════════════════════════════════════════════════
 
 local function classifyClaudeClipboard(text)
   local lines = splitLines(text)
@@ -421,11 +424,10 @@ local function classifyClaudeClipboard(text)
       end
       if parsed.hasMargin then marginLines = marginLines + 1 end
       if parsed.hadPipe then pipeLines = pipeLines + 1 end
-      if looksPromptLike(parsed.text) then promptLike = promptLike + 1 end
+      if isPromptLike(parsed.text) then promptLike = promptLike + 1 end
       if isDiffLikeLine(parsed.text) then diffLike = diffLike + 1 end
       if parsed.codeLike then codeLike = codeLike + 1 end
-      local hasLineNumberPrefix = isLineNumberPrefixed(parsed.text)
-      if hasLineNumberPrefix then numberedLines = numberedLines + 1 end
+      if isLineNumberPrefixed(parsed.text) then numberedLines = numberedLines + 1 end
       local t = parsed.text
       if t:match("^%d+%.%s") or t:match("^[%-%*%+] ") or t:match("^#+%s") then
         markdownStructural = markdownStructural + 1
@@ -433,8 +435,8 @@ local function classifyClaudeClipboard(text)
 
       local isWrapCandidate = not parsed.codeLike
         and not isStructuralLine(parsed.text)
-        and not looksPromptLike(parsed.text)
-        and not hasLineNumberPrefix
+        and not isPromptLike(parsed.text)
+        and not isLineNumberPrefixed(parsed.text)
         and not isDiffLikeLine(parsed.text)
         and #parsed.text >= config.wrapMinLineLength
 
@@ -472,29 +474,23 @@ local function classifyClaudeClipboard(text)
     return { mode = "none", score = 0 }
   end
 
+  -- Score: positive signals increase confidence, negative signals decrease.
   local score = 0
+
   if pipeLines > 0 then score = score + 5 end
 
-  if marginCoverage >= 0.95 then
-    score = score + 3
-  elseif marginCoverage >= 0.85 then
-    score = score + 2
-  else
-    score = score + 1
+  if marginCoverage >= 0.95 then score = score + 3
+  elseif marginCoverage >= 0.85 then score = score + 2
+  else score = score + 1
   end
 
-  if diffLike >= 2 then
-    score = score + 3
-  elseif diffLike == 1 then
-    score = score + 1
+  if diffLike >= 2 then score = score + 3
+  elseif diffLike == 1 then score = score + 1
   end
 
-  if wrappedPairs >= 3 then
-    score = score + 3
-  elseif wrappedPairs >= 2 then
-    score = score + 2
-  elseif wrappedPairs == 1 then
-    score = score + 1
+  if wrappedPairs >= 3 then score = score + 3
+  elseif wrappedPairs >= 2 then score = score + 2
+  elseif wrappedPairs == 1 then score = score + 1
   end
 
   if promptLike > 0 then
@@ -505,24 +501,16 @@ local function classifyClaudeClipboard(text)
     score = score - 3
   end
 
-  if numberedLines >= 2 then
-    score = score + 2
+  if numberedLines >= 2 then score = score + 2 end
+
+  if markdownStructural >= 3 then score = score + 2
+  elseif markdownStructural >= 2 then score = score + 1
   end
 
-  if markdownStructural >= 3 then
-    score = score + 2
-  elseif markdownStructural >= 2 then
-    score = score + 1
-  end
+  if partialCopy then score = score + 1 end
+  if marginCoverage < 0.75 then score = score - 1 end
 
-  if partialCopy then
-    score = score + 1
-  end
-
-  if marginCoverage < 0.75 then
-    score = score - 1
-  end
-
+  -- Decide mode from score.
   local mode = "none"
   if pipeLines > 0 then
     if score >= config.fullCleanThreshold then
@@ -558,6 +546,13 @@ local function classifyClaudeClipboard(text)
   }
 end
 
+-- ═══════════════════════════════════════════════════════════════
+-- Cleaning
+-- ═══════════════════════════════════════════════════════════════
+
+-- Strip uniform minimum indent from contiguous code blocks.
+-- Handles extra box padding that some terminals preserve beyond
+-- the 2-space margin and pipe character.
 local function dedentCodeBlocks(lines)
   local i = 1
   while i <= #lines do
@@ -609,13 +604,13 @@ local function inferWrapWidth(lines)
   local maxLen = 0
   for _, parsed in ipairs(lines) do
     if parsed.nonEmpty and not parsed.indented and not parsed.codeLike then
-      local len = #parsed.text
-      if len > maxLen then maxLen = len end
+      if #parsed.text > maxLen then maxLen = #parsed.text end
     end
   end
   return maxLen
 end
 
+-- Full clean: strip margins, dedent code blocks, rejoin wrapped paragraphs.
 local function cleanClaudeTUI(text)
   local lines = {}
   for _, rawLine in ipairs(splitLines(text)) do
@@ -661,6 +656,7 @@ local function cleanClaudeTUI(text)
   return table.concat(result, "\n")
 end
 
+-- Strip-only clean: remove margins and stray bare line numbers, no reflow.
 local function cleanClaudeTUIStripOnly(text)
   local lines = {}
   for _, rawLine in ipairs(splitLines(text)) do
@@ -681,9 +677,7 @@ local function cleanClaudeTUIStripOnly(text)
     if bareLineNumber then
       local prev = (lines[i - 1] and lines[i - 1].text) or ""
       local nxt = (lines[i + 1] and lines[i + 1].text) or ""
-      local adjacentStructured = isDiffOrNumbered(prev) or isDiffOrNumbered(nxt)
-
-      if not adjacentStructured then
+      if not (isDiffOrNumbered(prev) or isDiffOrNumbered(nxt)) then
         result[#result + 1] = lineText
       end
     else
@@ -692,6 +686,16 @@ local function cleanClaudeTUIStripOnly(text)
   end
 
   return table.concat(result, "\n")
+end
+
+-- ═══════════════════════════════════════════════════════════════
+-- Clipboard Interception
+-- ═══════════════════════════════════════════════════════════════
+
+local function isTerminalFocused()
+  local app = hs.application.frontmostApplication()
+  if not app then return false end
+  return terminalApps[app:name()] == true
 end
 
 local copyInterceptor
