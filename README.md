@@ -1,4 +1,4 @@
-# claude-copy
+# Claude Copy
 
 Copy text from Claude Code's terminal UI and paste it clean.
 
