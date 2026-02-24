@@ -55,17 +55,18 @@ cd claude-copy
 
 The install script:
 1. Installs Hammerspoon if you don't have it
-2. Appends a `dofile()` line to your `~/.hammerspoon/init.lua` (won't overwrite existing config)
+2. Copies `init.lua` to `~/.hammerspoon/claude-copy.lua`
+3. Appends a `dofile()` line to your `~/.hammerspoon/init.lua` (won't overwrite existing config)
 
-Then open Hammerspoon, grant it Accessibility permissions when prompted, and reload the config.
+Then open Hammerspoon, grant it Accessibility permissions when prompted, and reload the config. To update, pull the repo and re-run `./install.sh`.
 
-**Or do it manually:** copy `init.lua` into your `~/.hammerspoon/` directory (or `dofile()` it from your existing config).
+**Or do it manually:** copy `init.lua` to `~/.hammerspoon/claude-copy.lua` and add `dofile(os.getenv("HOME") .. "/.hammerspoon/claude-copy.lua")` to your `~/.hammerspoon/init.lua`.
 
 ## How it works
 
 Pipeline that runs when you press `Cmd+C`:
 
-1. **Intercept** - catches plain `Cmd+C` only when the focused app is a terminal emulator (Ghostty, iTerm2, Terminal, Alacritty, kitty, WezTerm, Hyper). Copies from other apps are never touched.
+1. **Intercept** - catches plain `Cmd+C` only when the focused app is a terminal emulator (Ghostty, iTerm2, Terminal, Alacritty, kitty, WezTerm, Hyper, Warp, Rio, Tabby, Wave). Copies from other apps are never touched.
 2. **Copy** - sends a real `Cmd+C`, waits for clipboard update, then reads the copied text.
 3. **Detect (conservative)** - scores Claude-likeness from multiple signals (2-space margin coverage, `│` markers, diff-like patterns, wrapped-line shape, prompt negatives).
 4. **Tiered clean** - high confidence gets strip + rejoin, medium confidence gets strip-only (no reflow), low confidence is left untouched.
@@ -76,7 +77,7 @@ Pipeline that runs when you press `Cmd+C`:
 - Only plain keyboard `Cmd+C` in terminal apps is intercepted. Menu copy or mouse/context-menu copy is not intercepted.
 - Detection is confidence-based and intentionally conservative. Ambiguous text may be strip-only or left untouched.
 - Fenced code blocks (triple backtick) get flattened by the terminal's clipboard before our script runs. The terminal copies them as a single line with space padding. Indented code blocks (4+ spaces) are preserved correctly.
-- Tested with Ghostty. Should work with iTerm2, Terminal.app, Alacritty, kitty, WezTerm, and Hyper.
+- Tested with Ghostty. Should work with iTerm2, Terminal.app, Alacritty, kitty, WezTerm, Hyper, Warp, Rio, Tabby, and Wave.
 
 ## Credits
 
