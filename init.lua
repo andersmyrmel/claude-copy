@@ -14,7 +14,7 @@ local terminalApps = {
   ["Hyper"] = true,
 }
 
-local VERSION = "2026-02-23.8"
+local VERSION = "2026-02-24.1"
 
 local config = {
   copyTimeoutMs = 350,
@@ -27,6 +27,8 @@ local config = {
   noPipeMinWrappedPairsForFull = 2,
   wrapMinLineLength = 24,
   wrapSimilarityDelta = 12,
+  wrapJoinSlack = 15,
+  wrapMinInferredWidth = 40,
 }
 
 local lineNumberCodeKeywords = {
@@ -538,6 +540,8 @@ local function classifyClaudeClipboard(text)
       mode = "full"
     elseif score >= config.stripOnlyThreshold then
       mode = "strip"
+    elseif marginCoverage >= 0.95 then
+      mode = "strip"
     end
   end
 
@@ -554,11 +558,72 @@ local function classifyClaudeClipboard(text)
   }
 end
 
+local function dedentCodeBlocks(lines)
+  local i = 1
+  while i <= #lines do
+    if lines[i].nonEmpty and (lines[i].codeLike or lines[i].indented) then
+      local blockStart = i
+      local lastCodeLine = i
+      local j = i + 1
+      while j <= #lines do
+        if lines[j].nonEmpty then
+          if lines[j].codeLike or lines[j].indented then
+            lastCodeLine = j
+          else
+            break
+          end
+        end
+        j = j + 1
+      end
+      local blockEnd = lastCodeLine
+
+      local minIndent = math.huge
+      for k = blockStart, blockEnd do
+        if lines[k].nonEmpty and not lines[k].text:match("^```") then
+          local spaces = lines[k].text:match("^(%s*)")
+          if #spaces < minIndent then minIndent = #spaces end
+        end
+      end
+
+      if minIndent > 0 and minIndent < math.huge then
+        for k = blockStart, blockEnd do
+          if lines[k].nonEmpty then
+            local spaces = lines[k].text:match("^(%s*)")
+            if #spaces >= minIndent then
+              lines[k].text = lines[k].text:sub(minIndent + 1)
+              lines[k].indented = lines[k].text:match("^    %S") ~= nil
+                or lines[k].text:match("^\t") ~= nil
+            end
+          end
+        end
+      end
+
+      i = blockEnd + 1
+    else
+      i = i + 1
+    end
+  end
+end
+
+local function inferWrapWidth(lines)
+  local maxLen = 0
+  for _, parsed in ipairs(lines) do
+    if parsed.nonEmpty and not parsed.indented and not parsed.codeLike then
+      local len = #parsed.text
+      if len > maxLen then maxLen = len end
+    end
+  end
+  return maxLen
+end
+
 local function cleanClaudeTUI(text)
   local lines = {}
   for _, rawLine in ipairs(splitLines(text)) do
     lines[#lines + 1] = parseClaudeLine(rawLine)
   end
+
+  dedentCodeBlocks(lines)
+  local wrapWidth = inferWrapWidth(lines)
 
   local result = {}
   local i = 1
@@ -571,14 +636,21 @@ local function cleanClaudeTUI(text)
       result[#result + 1] = cur.text
     else
       local para = cur.text
+      local lastLineLen = #cur.text
       while i + 1 <= #lines do
         local nxt = lines[i + 1]
         if not nxt.nonEmpty then break end
         if nxt.indented then break end
         if nxt.codeLike then break end
         if isStructuralLine(nxt.text) then break end
+        if wrapWidth >= config.wrapMinInferredWidth
+          and lastLineLen < wrapWidth - config.wrapJoinSlack then
+          break
+        end
         i = i + 1
-        para = para .. " " .. nxt.text:match("^%s*(.-)$")
+        local nxtText = nxt.text:match("^%s*(.-)$")
+        lastLineLen = #nxtText
+        para = para .. " " .. nxtText
       end
       result[#result + 1] = para
     end
@@ -594,6 +666,8 @@ local function cleanClaudeTUIStripOnly(text)
   for _, rawLine in ipairs(splitLines(text)) do
     lines[#lines + 1] = parseClaudeLine(rawLine)
   end
+
+  dedentCodeBlocks(lines)
 
   local function isDiffOrNumbered(lineText)
     return isLineNumberPrefixed(lineText) or lineText:match("^%d+%s+[+%-]%s") ~= nil
