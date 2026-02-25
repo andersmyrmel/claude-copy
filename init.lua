@@ -410,6 +410,7 @@ local function classifyClaudeClipboard(text)
   local markdownStructural = 0
   local wrappedPairs = 0
   local previousWrapCandidate = nil
+  local maxProseLen = 0
   local firstLineNoMargin = false
   local seenFirstNonEmpty = false
 
@@ -441,10 +442,13 @@ local function classifyClaudeClipboard(text)
         and #parsed.text >= config.wrapMinLineLength
 
       if isWrapCandidate then
+        if #parsed.text > maxProseLen then maxProseLen = #parsed.text end
         if previousWrapCandidate then
-          local similarWidth = math.abs(#previousWrapCandidate - #parsed.text) <= config.wrapSimilarityDelta
+          local prevLen = #previousWrapCandidate
+          local similarWidth = math.abs(prevLen - #parsed.text) <= config.wrapSimilarityDelta
           local previousLooksWrapped = not previousWrapCandidate:match("[%.%!%?:;]$")
-          if similarWidth and previousLooksWrapped then
+          local previousFillsWidth = maxProseLen > 0 and prevLen >= maxProseLen - 5
+          if similarWidth and (previousLooksWrapped or previousFillsWidth) then
             wrappedPairs = wrappedPairs + 1
           end
         end
@@ -524,6 +528,14 @@ local function classifyClaudeClipboard(text)
       and score >= config.noPipeFullCleanThreshold
       and wrappedPairs >= config.noPipeMinWrappedPairsForFull
       and codeLike < nonEmpty
+    then
+      mode = "full"
+    elseif marginCoverage >= 0.95
+      and codeLike == 0
+      and wrappedPairs >= 1
+      and numberedLines == 0
+      and diffLike == 0
+      and promptLike == 0
     then
       mode = "full"
     elseif score >= config.stripOnlyThreshold then
