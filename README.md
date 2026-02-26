@@ -55,12 +55,12 @@ cd claude-copy
 
 The install script:
 1. Installs Hammerspoon if you don't have it
-2. Copies `init.lua` to `~/.hammerspoon/claude-copy.lua`
+2. Copies `init.lua` and `clean.lua` to `~/.hammerspoon/`
 3. Appends a `dofile()` line to your `~/.hammerspoon/init.lua` (won't overwrite existing config)
 
 Then open Hammerspoon, grant it Accessibility permissions when prompted, and reload the config. To update, pull the repo and re-run `./install.sh`.
 
-**Or do it manually:** copy `init.lua` to `~/.hammerspoon/claude-copy.lua` and add `dofile(os.getenv("HOME") .. "/.hammerspoon/claude-copy.lua")` to your `~/.hammerspoon/init.lua`.
+**Or do it manually:** copy `init.lua` to `~/.hammerspoon/claude-copy.lua` and `clean.lua` to `~/.hammerspoon/clean.lua`, then add `dofile(os.getenv("HOME") .. "/.hammerspoon/claude-copy.lua")` to your `~/.hammerspoon/init.lua`.
 
 ## How it works
 
