@@ -12,9 +12,10 @@ fi
 
 mkdir -p "$DEST"
 
-# Copy init.lua into Hammerspoon directory
+# Copy source files into Hammerspoon directory
+cp "$SCRIPT_DIR/clean.lua" "$DEST/clean.lua"
 cp "$SCRIPT_DIR/init.lua" "$DEST/claude-copy.lua"
-echo "Copied claude-copy.lua to $DEST/"
+echo "Copied claude-copy.lua and clean.lua to $DEST/"
 
 # Append dofile to init.lua (don't overwrite existing config)
 if grep -q "claude-copy" "$DEST/init.lua" 2>/dev/null; then
