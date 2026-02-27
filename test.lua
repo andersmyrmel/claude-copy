@@ -191,6 +191,48 @@ test("clean: Key: value lines not rejoined", function()
   assert(result:find("\n"), "Key: value lines should stay separate")
 end)
 
+test("clean: hashtag lines are rejoined", function()
+  local input = piped({
+    "your next product research session. #beautytok #makeuptok #eyebrows",
+    "#winningproducts #dropshipping",
+  })
+  local result = clean.clean(input)
+  assert(result:find("eyebrows #winning"), "hashtag lines should be rejoined")
+end)
+
+-- ═══════════════════════════════════════════════════════════════
+-- Ambiguous keywords in prose should not break rejoin
+-- ═══════════════════════════════════════════════════════════════
+
+test("clean: line starting with 'if' in prose is rejoined", function()
+  local input = piped({
+    "profit per unit at 92% margin. 3,000 sellers already moved this product. The beauty niche prints money",
+    "if you pick the right products. Drop your selling price in the comments and bet nobody beats 92% margin",
+  })
+  local result = clean.clean(input)
+  assert(result:find("money if you"), "should rejoin 'money' and 'if you'")
+end)
+
+test("clean: line starting with 'for' in prose is rejoined", function()
+  local input = piped({
+    "3,000 sellers already moved this product. The beauty niche prints money if you pick the right products",
+    "for your next product research session. Save this and share it with someone who needs to hear all this.",
+  })
+  local result = clean.clean(input)
+  assert(result:find("products for your"), "should rejoin 'products' and 'for your'")
+end)
+
+test("clean: actual code 'if' with parens is NOT rejoined", function()
+  local input = piped({
+    "const x = 1;",
+    "if (x > 0) {",
+    "  return true;",
+    "}",
+  })
+  local result = clean.clean(input)
+  assert(result:find("\n"), "code lines should stay separate")
+end)
+
 -- ═══════════════════════════════════════════════════════════════
 -- Code should not be rejoined
 -- ═══════════════════════════════════════════════════════════════

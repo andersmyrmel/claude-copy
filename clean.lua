@@ -134,12 +134,23 @@ local function isStructuralLine(line)
     or line:match("^%-%-%-")
     or line:match("^___")
     or line:match("^%u[%w_]-:%s")
-    or line:match("^#%w")
+    or (line:match("^#%w") and not line:match("#%w+%s+#%w"))
 end
+
+-- Keywords that commonly start English sentences. When one of these
+-- starts a line with no code syntax (brackets, semicolons, assignment),
+-- treat as prose rather than code.
+local ambiguousKeywords = {
+  ["if"] = true, ["for"] = true, ["from"] = true, ["while"] = true,
+  ["try"] = true, ["type"] = true, ["case"] = true, ["let"] = true,
+}
 
 local function startsWithCodeKeyword(line)
   for _, keyword in ipairs(codeKeywords) do
     if line:match("^%s*" .. keyword .. "%f[%A]") then
+      if ambiguousKeywords[keyword] and not line:match("[%(%)%{%}%[%];=]") then
+        return false
+      end
       return true
     end
   end
