@@ -440,7 +440,7 @@ local function classifyClaudeClipboard(text)
           local similarWidth = math.abs(prevLen - #parsed.text) <= config.wrapSimilarityDelta
           local previousLooksWrapped = not previousWrapCandidate:match("[%.%!%?:;]$")
           local previousFillsWidth = maxProseLen > 0 and prevLen >= maxProseLen - 5
-          if similarWidth and (previousLooksWrapped or previousFillsWidth) then
+          if (similarWidth or previousFillsWidth) and (previousLooksWrapped or previousFillsWidth) then
             wrappedPairs = wrappedPairs + 1
           end
         end

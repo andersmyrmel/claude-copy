@@ -234,6 +234,32 @@ test("clean: actual code 'if' with parens is NOT rejoined", function()
 end)
 
 -- ═══════════════════════════════════════════════════════════════
+-- Partial copy with full-width lines should be rejoined
+-- ═══════════════════════════════════════════════════════════════
+
+test("classify: partial copy prose with full-width lines is full mode", function()
+  -- First line has no margin (selection started mid-line), rest have 2-space margins
+  local input = table.concat({
+    "Our audience is Shopify agencies, freelancers, and e-commerce operators who use",
+    "  StoreInspect to find and analyze Shopify stores. After identifying prospects, they need cold outreach",
+    "  tools like lemlist. We mention lemlist in our guide on how to sell to Shopify stores.",
+  }, "\n")
+  local c = clean.classify(input)
+  assert(c.mode == "full", "expected full, got " .. c.mode)
+end)
+
+test("clean: partial copy with full-width wrap is rejoined", function()
+  local input = table.concat({
+    "Our audience is Shopify agencies, freelancers, and e-commerce operators who use",
+    "  StoreInspect to find and analyze Shopify stores. After identifying prospects, they need cold outreach",
+    "  tools like lemlist. We mention lemlist in our guide on how to sell to Shopify stores.",
+  }, "\n")
+  local result = clean.clean(input)
+  assert(result:find("use StoreInspect"), "partial copy prose should be rejoined")
+  assert(not result:find("\n"), "should be a single line")
+end)
+
+-- ═══════════════════════════════════════════════════════════════
 -- Code should not be rejoined
 -- ═══════════════════════════════════════════════════════════════
 
