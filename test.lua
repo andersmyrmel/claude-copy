@@ -129,6 +129,30 @@ test("clean: partial copy first line joins with rest", function()
 end)
 
 -- ═══════════════════════════════════════════════════════════════
+-- Bug fix: hard break mid-word in spaceless text (comma-separated keywords)
+-- ═══════════════════════════════════════════════════════════════
+
+test("classify: spaceless text with hard break tail → full", function()
+  local input = margin({
+    "shopify,ecommerce,saas,b2b,shopifyapps,shopifythemes,analytics,emailmarketing,reviews,loyalty,crm,leadge",
+    "neration",
+  })
+  local r = clean.classify(input)
+  eq(r.mode, "full", "should be full, not " .. r.mode)
+end)
+
+test("clean: hard break mid-word joins without space", function()
+  local input = margin({
+    "shopify,ecommerce,saas,b2b,shopifyapps,shopifythemes,analytics,emailmarketing,reviews,loyalty,crm,leadge",
+    "neration",
+  })
+  local result = clean.clean(input)
+  eq(result:find("\n"), nil, "should be one line")
+  assert(result:find("leadgeneration"), "should join without space, got: " .. result:sub(-30))
+  assert(not result:find("leadge neration"), "should NOT have space in middle of word")
+end)
+
+-- ═══════════════════════════════════════════════════════════════
 -- Paragraph breaks should be preserved
 -- ═══════════════════════════════════════════════════════════════
 

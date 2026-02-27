@@ -434,6 +434,17 @@ local function classifyClaudeClipboard(text)
           end
         end
         previousWrapCandidate = parsed.text
+      elseif parsed.nonEmpty
+        and not parsed.codeLike
+        and not isStructuralLine(parsed.text)
+        and not isPromptLike(parsed.text)
+        and #parsed.text < config.wrapMinLineLength
+        and previousWrapCandidate
+        and #previousWrapCandidate >= config.wrapMinInferredWidth
+      then
+        -- Short tail after a long line: hard break at terminal width.
+        wrappedPairs = wrappedPairs + 1
+        previousWrapCandidate = nil
       else
         previousWrapCandidate = nil
       end
@@ -645,6 +656,7 @@ local function cleanClaudeTUI(text)
     else
       local para = cur.text
       local lastLineLen = #cur.text
+      local lastLineText = cur.text
       local skipWidthCheck = atFirstLine and firstLinePartial
       while i + 1 <= #lines do
         local nxt = lines[i + 1]
@@ -660,8 +672,12 @@ local function cleanClaudeTUI(text)
         skipWidthCheck = false
         i = i + 1
         local nxtText = nxt.text:match("^%s*(.-)$")
+        -- Hard break: if the previous line had no spaces, the terminal
+        -- broke mid-word (no word boundary available). Join without space.
+        local separator = lastLineText:find(" ") and " " or ""
         lastLineLen = #nxtText
-        para = para .. " " .. nxtText
+        lastLineText = nxtText
+        para = para .. separator .. nxtText
       end
       result[#result + 1] = para
       atFirstLine = false
