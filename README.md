@@ -66,7 +66,7 @@ Then open Hammerspoon, grant it Accessibility permissions when prompted, and rel
 
 Pipeline that runs when you press `Cmd+C`:
 
-1. **Intercept** - catches plain `Cmd+C` only when the focused app is a terminal emulator (Ghostty, iTerm2, Terminal, Alacritty, kitty, WezTerm, Hyper, Warp, Rio, Tabby, Wave). Copies from other apps are never touched.
+1. **Intercept** - catches plain `Cmd+C` only when the focused app is a terminal emulator (Ghostty, iTerm2, Terminal, Alacritty, kitty, WezTerm, Hyper, Warp, Rio, Tabby, Wave, Cursor). Copies from other apps are never touched.
 2. **Copy** - sends a real `Cmd+C`, waits for clipboard update, then reads the copied text.
 3. **Detect (conservative)** - scores Claude-likeness from multiple signals (2-space margin coverage, `│` markers, diff-like patterns, wrapped-line shape, prompt negatives).
 4. **Tiered clean** - high confidence gets strip + rejoin, medium confidence gets strip-only (no reflow), low confidence is left untouched.
@@ -77,7 +77,7 @@ Pipeline that runs when you press `Cmd+C`:
 - Only plain keyboard `Cmd+C` in terminal apps is intercepted. Menu copy or mouse/context-menu copy is not intercepted.
 - Detection is confidence-based and intentionally conservative. Ambiguous text may be strip-only or left untouched.
 - Fenced code blocks (triple backtick) get flattened by the terminal's clipboard before our script runs. The terminal copies them as a single line with space padding. Indented code blocks (4+ spaces) are preserved correctly.
-- Tested with Ghostty. Should work with iTerm2, Terminal.app, Alacritty, kitty, WezTerm, Hyper, Warp, Rio, Tabby, and Wave.
+- Tested with Ghostty and Cursor's integrated terminal. Should work with iTerm2, Terminal.app, Alacritty, kitty, WezTerm, Hyper, Warp, Rio, Tabby, and Wave.
 
 ## Credits
 

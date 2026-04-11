@@ -25,6 +25,7 @@ local terminalApps = {
   ["Rio"] = true,
   ["Tabby"] = true,
   ["Wave"] = true,
+  ["Cursor"] = true,
 }
 
 local config = {
